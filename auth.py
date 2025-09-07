@@ -1,33 +1,34 @@
 from datetime import datetime, timedelta
-from typing import Optional
-import jwt
-from jwt.exceptions import InvalidTokenError
-from fastapi import HTTPException, status, Depends
-from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 
-SECRET_KEY = "your-secret-key"
+SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+fake_users_db = {
+    "alice": {"username": "alice", "password": "1234"},
+    "bob": {"username": "bob", "password": "5678"}
+}
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def authenticate_user(username: str, password: str):
+    user = fake_users_db.get(username)
+    if not user or user["password"] != password:
+        return None
+    return user
+
+def create_access_token(data: dict, expires_delta: int = ACCESS_TOKEN_EXPIRE_MINUTES):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    expire = datetime.utcnow() + timedelta(minutes=expires_delta)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
-def verify_token(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+def verify_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise credentials_exception
+            return None
         return username
-    except InvalidTokenError:
-        raise credentials_exception
+    except JWTError:
+        return None

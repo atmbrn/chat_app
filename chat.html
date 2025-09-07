@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>FastAPI JWT Чат</title>
+<style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #chat { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 5px; }
+    #users { margin-top: 10px; }
+    input, button { padding: 5px; margin: 2px; }
+</style>
+</head>
+<body>
+
+<h2>Логін</h2>
+<input id="username" placeholder="Ім'я" value="alice">
+<input id="password" placeholder="Пароль" type="password" value="1234">
+<button onclick="login()">Увійти</button>
+
+<h2>Чат</h2>
+<div id="chat"></div>
+<input id="message" placeholder="Повідомлення">
+<button onclick="sendMessage()">Відправити</button>
+
+<h3>Активні користувачі</h3>
+<ul id="users"></ul>
+
+<script>
+let token = null;
+let ws = null;
+
+async function login() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    const formData = new URLSearchParams();
+    formData.append("username", username);
+    formData.append("password", password);
+    formData.append("grant_type", "password");
+
+    const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData
+    });
+
+    if (!res.ok) {
+        alert("Помилка входу");
+        return;
+    }
+
+    const data = await res.json();
+    if (data.access_token) {
+        token = data.access_token;
+        connectWebSocket();
+        updateUsers();
+        alert("Вхід успішний!");
+    } else {
+        alert("Помилка входу");
+    }
+}
+
+function connectWebSocket() {
+    if (!token) return;
+
+    ws = new WebSocket(`ws://${location.host}/ws/chat?token=${token}`);
+    
+    ws.onmessage = (event) => {
+        const chat = document.getElementById("chat");
+        chat.innerHTML += event.data + "<br>";
+        chat.scrollTop = chat.scrollHeight;
+    };
+
+    ws.onclose = () => {
+        console.log("З'єднання закрите");
+    };
+}
+
+function sendMessage() {
+    const msg = document.getElementById("message").value;
+    if (ws && msg) {
+        ws.send(msg);
+        document.getElementById("message").value = "";
+    }
+}
+
+async function updateUsers() {
+    if (!token) return;
+
+    try {
+        const res = await fetch(`/users?token=${token}`);
+        if (!res.ok) throw new Error("Не вдалось отримати користувачів");
+
+        const data = await res.json();
+        const list = document.getElementById("users");
+        list.innerHTML = "";
+        data.active_users.forEach(u => {
+            const li = document.createElement("li");
+            li.textContent = u;
+            list.appendChild(li);
+        });
+    } catch (err) {
+        console.log(err);
+    } finally {
+        setTimeout(updateUsers, 2000);
+    }
+}
+</script>
+</body>
+</html>
